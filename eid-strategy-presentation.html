@@ -1,0 +1,519 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>eID Generation Strategy</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,500;8..60,600;8..60,700&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#0A0F1C;
+    --ink-2:#111928;
+    --ink-3:#1B2338;
+    --hair:#26304a;
+    --brass:#C9A227;
+    --brass-soft:rgba(201,162,39,0.14);
+    --verify:#34D399;
+    --verify-soft:rgba(52,211,153,0.12);
+    --text:#E8ECF6;
+    --dim:#8D97AE;
+    --dimmer:#5C6580;
+    --serif:'Source Serif 4', serif;
+    --sans:'IBM Plex Sans', sans-serif;
+    --mono:'IBM Plex Mono', monospace;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;}
+  html{scroll-behavior:smooth;}
+  body{
+    background:var(--ink);
+    color:var(--text);
+    font-family:var(--sans);
+    overflow-x:hidden;
+  }
+  ::selection{background:var(--brass-soft);color:var(--brass);}
+
+  /* faint grid texture */
+  .grain{
+    position:fixed;inset:0;pointer-events:none;z-index:0;opacity:.05;
+    background-image:
+      linear-gradient(var(--hair) 1px, transparent 1px),
+      linear-gradient(90deg, var(--hair) 1px, transparent 1px);
+    background-size: 48px 48px;
+  }
+
+  .deck{position:relative;z-index:1;}
+  section.slide{
+    min-height:100vh;
+    width:100%;
+    display:flex;
+    flex-direction:column;
+    justify-content:center;
+    padding:8vh 8vw;
+    position:relative;
+    border-bottom:1px solid var(--hair);
+    scroll-margin-top:0;
+  }
+  section.slide:last-child{border-bottom:none;}
+
+  .eyebrow{
+    font-family:var(--mono);
+    font-size:.72rem;
+    letter-spacing:.18em;
+    text-transform:uppercase;
+    color:var(--brass);
+    display:flex;
+    align-items:center;
+    gap:.6rem;
+    margin-bottom:1.4rem;
+  }
+  .eyebrow::before{
+    content:'';
+    width:22px;height:1px;background:var(--brass);display:inline-block;
+  }
+
+  h1,h2,h3{font-family:var(--serif);font-weight:600;letter-spacing:-.01em;}
+  h1{font-size:clamp(2.4rem,5vw,4.4rem);line-height:1.05;}
+  h2{font-size:clamp(1.9rem,3.4vw,2.9rem);line-height:1.1;margin-bottom:.6rem;}
+  p.lede{color:var(--dim);font-size:1.15rem;max-width:640px;line-height:1.6;margin-top:1rem;}
+
+  /* ---------- NAV DOTS ---------- */
+  .navdots{
+    position:fixed;
+    right:28px;top:50%;transform:translateY(-50%);
+    z-index:50;
+    display:flex;flex-direction:column;gap:14px;
+  }
+  .navdots button{
+    width:8px;height:8px;border-radius:50%;
+    background:var(--ink-3);border:1px solid var(--hair);
+    cursor:pointer;transition:.25s;padding:0;
+  }
+  .navdots button.active{
+    background:var(--brass);border-color:var(--brass);
+    box-shadow:0 0 0 4px var(--brass-soft);
+  }
+  @media (max-width:700px){.navdots{display:none;}}
+
+  /* progress bar */
+  .progress{position:fixed;top:0;left:0;height:2px;background:var(--brass);z-index:60;width:0%;transition:width .1s linear;}
+
+  /* ---------- CHIP / CARD MOTIF ---------- */
+  .idcard{
+    position:relative;
+    width:340px;
+    aspect-ratio:1.586/1;
+    border-radius:14px;
+    background:linear-gradient(155deg,#151d30,#0d1322 70%);
+    border:1px solid var(--hair);
+    box-shadow:0 30px 80px -20px rgba(0,0,0,.7), inset 0 1px 0 rgba(255,255,255,.03);
+    padding:22px 24px;
+    display:flex;
+    flex-direction:column;
+    justify-content:space-between;
+  }
+  .chip{
+    width:38px;height:28px;border-radius:5px;
+    background:linear-gradient(135deg,#e8d9a0,var(--brass) 60%,#8a6c14);
+    position:relative;
+    overflow:hidden;
+  }
+  .chip::before,.chip::after{
+    content:'';position:absolute;background:rgba(0,0,0,.28);
+  }
+  .chip::before{top:50%;left:0;right:0;height:1px;}
+  .chip::after{left:50%;top:0;bottom:0;width:1px;}
+  .idcard .code{
+    font-family:var(--mono);
+    letter-spacing:.06em;
+    font-size:1.05rem;
+    color:var(--text);
+  }
+  .idcard .code .dim{color:var(--dimmer);}
+  .idcard .bottomrow{
+    display:flex;justify-content:space-between;align-items:flex-end;
+  }
+  .idcard .label{
+    font-family:var(--mono);font-size:.62rem;letter-spacing:.14em;
+    color:var(--dimmer);text-transform:uppercase;
+  }
+  .idcard .redbar{
+    height:8px;border-radius:2px;
+    background:repeating-linear-gradient(90deg,var(--dimmer) 0 2px, transparent 2px 5px);
+    width:70%;margin-top:6px;opacity:.5;
+  }
+  .checksum-badge{
+    font-family:var(--mono);font-size:.7rem;color:var(--verify);
+    border:1px solid var(--verify);border-radius:20px;padding:3px 10px;
+  }
+
+  /* ---------- CHAIN / FLOW DIAGRAM (signature element) ---------- */
+  .chain{
+    display:flex;flex-direction:column;
+    margin-top:2.4rem;
+    max-width:560px;
+  }
+  .chain .link{
+    display:flex;align-items:flex-start;gap:20px;position:relative;
+  }
+  .chain .link .node-col{
+    display:flex;flex-direction:column;align-items:center;
+  }
+  .chain .link .dot{
+    width:14px;height:14px;border-radius:50%;
+    border:2px solid var(--brass);background:var(--ink);
+    flex-shrink:0;margin-top:6px;
+    box-shadow:0 0 0 4px var(--brass-soft);
+  }
+  .chain .link.final .dot{background:var(--verify);border-color:var(--verify);box-shadow:0 0 0 4px var(--verify-soft);}
+  .chain .link .stem{
+    width:2px;flex:1;background:linear-gradient(var(--brass),var(--hair));
+    min-height:38px;
+  }
+  .chain .link:last-child .stem{display:none;}
+  .chain .link .content{padding-bottom:34px;}
+  .chain .link .content h4{
+    font-family:var(--sans);font-weight:600;font-size:1.05rem;color:var(--text);
+  }
+  .chain .link .content span{
+    font-family:var(--mono);font-size:.78rem;color:var(--dim);
+  }
+
+  /* ---------- TABLE ---------- */
+  table.approaches{
+    width:100%;border-collapse:collapse;margin-top:2rem;max-width:900px;
+  }
+  table.approaches th{
+    font-family:var(--mono);font-size:.68rem;letter-spacing:.12em;text-transform:uppercase;
+    color:var(--dimmer);text-align:left;padding:0 18px 14px 0;font-weight:500;
+    border-bottom:1px solid var(--hair);
+  }
+  table.approaches td{
+    padding:16px 18px 16px 0;border-bottom:1px solid var(--ink-3);
+    font-size:.98rem;color:var(--text);vertical-align:top;
+  }
+  table.approaches td.code{font-family:var(--mono);color:var(--brass);font-size:.92rem;}
+  table.approaches td.dim{color:var(--dim);}
+  table.approaches tr:last-child td{border-bottom:none;}
+
+  /* ---------- EQUATION ---------- */
+  .equation{
+    display:flex;align-items:center;flex-wrap:wrap;gap:1.1rem;margin-top:2.2rem;
+  }
+  .eq-term{
+    font-family:var(--serif);font-size:1.3rem;
+    background:var(--ink-2);border:1px solid var(--hair);
+    padding:.9rem 1.4rem;border-radius:8px;
+  }
+  .eq-term.result{border-color:var(--brass);color:var(--brass);}
+  .eq-op{font-family:var(--mono);color:var(--dimmer);font-size:1.3rem;}
+
+  /* ---------- TWO COL LAYOUT ---------- */
+  .cols{display:flex;gap:6vw;align-items:flex-start;flex-wrap:wrap;}
+  .col{flex:1;min-width:280px;}
+
+  /* ---------- STEP CARDS (recommended model) ---------- */
+  .steps{display:flex;flex-direction:column;gap:0;margin-top:1rem;}
+  .step{
+    display:grid;grid-template-columns:64px 1fr;gap:26px;
+    padding:28px 0;border-bottom:1px solid var(--ink-3);
+  }
+  .step:last-child{border-bottom:none;}
+  .step .num{
+    font-family:var(--mono);font-size:.85rem;color:var(--brass);
+    width:64px;height:64px;border:1px solid var(--hair);border-radius:10px;
+    display:flex;align-items:center;justify-content:center;
+    background:var(--ink-2);
+  }
+  .step h3{font-size:1.25rem;margin-bottom:.5rem;color:var(--text);}
+  .step .desc{color:var(--dim);font-size:.98rem;line-height:1.55;margin-bottom:.7rem;}
+  .step .tags{display:flex;flex-wrap:wrap;gap:8px;}
+  .step .tags span{
+    font-family:var(--mono);font-size:.72rem;color:var(--dim);
+    border:1px solid var(--hair);border-radius:20px;padding:3px 11px;
+  }
+  .example{
+    font-family:var(--mono);font-size:1rem;color:var(--brass);
+    background:var(--ink-2);border:1px solid var(--hair);
+    display:inline-block;padding:8px 16px;border-radius:6px;margin-top:.6rem;
+    letter-spacing:.03em;
+  }
+
+  /* ---------- CHECKLIST ---------- */
+  .checklist{display:grid;grid-template-columns:1fr 1fr;gap:14px 40px;margin-top:2.2rem;max-width:820px;}
+  @media (max-width:700px){.checklist{grid-template-columns:1fr;}}
+  .checklist .item{
+    display:flex;align-items:center;gap:14px;
+    padding:14px 18px;border:1px solid var(--hair);border-radius:8px;background:var(--ink-2);
+  }
+  .checklist .item .mark{
+    width:22px;height:22px;border-radius:50%;background:var(--verify-soft);
+    border:1px solid var(--verify);color:var(--verify);
+    display:flex;align-items:center;justify-content:center;font-size:.72rem;flex-shrink:0;
+  }
+  .checklist .item span{font-size:.95rem;}
+
+  /* ---------- CLOSING ---------- */
+  .closing{
+    display:flex;flex-direction:column;align-items:flex-start;gap:2rem;
+  }
+  blockquote{
+    font-family:var(--serif);font-size:clamp(1.5rem,3vw,2.3rem);
+    line-height:1.4;color:var(--text);max-width:820px;font-weight:500;
+    border-left:2px solid var(--brass);padding-left:2rem;
+  }
+  .seal{
+    width:74px;height:74px;border-radius:50%;
+    border:1px solid var(--brass);
+    display:flex;align-items:center;justify-content:center;
+    font-family:var(--mono);font-size:.62rem;color:var(--brass);
+    letter-spacing:.1em;text-align:center;line-height:1.3;
+  }
+
+  footer.tag{
+    position:absolute;bottom:28px;left:8vw;
+    font-family:var(--mono);font-size:.68rem;color:var(--dimmer);letter-spacing:.1em;text-transform:uppercase;
+  }
+  .kicker-num{
+    position:absolute;top:28px;right:8vw;
+    font-family:var(--mono);font-size:.68rem;color:var(--dimmer);letter-spacing:.1em;
+  }
+</style>
+</head>
+<body>
+<div class="grain"></div>
+<div class="progress" id="progress"></div>
+<div class="navdots" id="navdots"></div>
+
+<div class="deck">
+
+  <!-- SLIDE 0 — TITLE -->
+  <section class="slide" id="s0">
+    <div class="eyebrow">Digital Identity Strategy</div>
+    <div class="cols" style="align-items:center;">
+      <div class="col">
+        <h1>eID Generation<br>Strategy</h1>
+        <p class="lede">Global best practices, the Estonian model, and our recommendation — for a digital identity system built on cryptographic trust, not on the identifier itself.</p>
+      </div>
+      <div class="col" style="display:flex;justify-content:center;">
+        <div class="idcard">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+            <div class="chip"></div>
+            <span class="label">eID · Verified</span>
+          </div>
+          <div>
+            <div class="code">NL <span class="dim">·</span> 8F4K9M2X7Q <span class="dim">·</span> 7</div>
+            <div class="redbar"></div>
+          </div>
+          <div class="bottomrow">
+            <span class="label">No personal data embedded</span>
+            <span class="checksum-badge">checksum ok</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <footer class="tag">eID Generation Strategy — Overview</footer>
+  </section>
+
+  <!-- SLIDE 1 — GLOBAL APPROACHES -->
+  <section class="slide" id="s1">
+    <div class="kicker-num">01 / 05</div>
+    <div class="eyebrow">Global Landscape</div>
+    <h2>How countries generate eIDs</h2>
+    <p class="lede">Five recurring models, ranging from exposed sequential numbers to fully cryptographic identity.</p>
+    <table class="approaches">
+      <tr><th>Approach</th><th>Example</th><th>Used by</th></tr>
+      <tr><td>Sequential Number</td><td class="code">1234567890</td><td class="dim">Traditional national IDs</td></tr>
+      <tr><td>Date / Region Based</td><td class="code">19900101-1234</td><td class="dim">Nordic countries</td></tr>
+      <tr><td>Random Unique Identifier</td><td class="code">A8F4K9M2X7Q</td><td class="dim">Modern digital identity systems</td></tr>
+      <tr><td>UUID-Based Internal ID</td><td class="code">UUIDv7</td><td class="dim">Modern government platforms</td></tr>
+      <tr><td>Cryptographic Identity</td><td class="code">Public / Private Key Pair</td><td class="dim">eIDAS, digital wallets</td></tr>
+    </table>
+
+    <div class="chain">
+      <div class="link">
+        <div class="node-col"><div class="dot"></div><div class="stem"></div></div>
+        <div class="content"><h4>Physical Identity</h4></div>
+      </div>
+      <div class="link">
+        <div class="node-col"><div class="dot"></div><div class="stem"></div></div>
+        <div class="content"><h4>Identity Proofing</h4></div>
+      </div>
+      <div class="link">
+        <div class="node-col"><div class="dot"></div><div class="stem"></div></div>
+        <div class="content"><h4>Random Unique Identifier</h4></div>
+      </div>
+      <div class="link">
+        <div class="node-col"><div class="dot"></div><div class="stem"></div></div>
+        <div class="content"><h4>Digital Credential</h4></div>
+      </div>
+      <div class="link final">
+        <div class="node-col"><div class="dot"></div></div>
+        <div class="content"><h4>Cryptographic Trust</h4><span>the global trend's endpoint</span></div>
+      </div>
+    </div>
+    <footer class="tag">The trend moves away from exposing personal data in the identifier itself</footer>
+  </section>
+
+  <!-- SLIDE 2 — ESTONIA -->
+  <section class="slide" id="s2">
+    <div class="kicker-num">02 / 05</div>
+    <div class="eyebrow">Case Study — Estonia</div>
+    <h2>Trust isn't in the number</h2>
+    <p class="lede">Estonia does not rely on the eID number alone. Trust is layered on top of it.</p>
+
+    <div class="cols" style="margin-top:1rem;">
+      <div class="col">
+        <div class="chain">
+          <div class="link">
+            <div class="node-col"><div class="dot"></div><div class="stem"></div></div>
+            <div class="content"><h4>Citizen Registration</h4></div>
+          </div>
+          <div class="link">
+            <div class="node-col"><div class="dot"></div><div class="stem"></div></div>
+            <div class="content"><h4>Population Registry Verification</h4></div>
+          </div>
+          <div class="link">
+            <div class="node-col"><div class="dot"></div><div class="stem"></div></div>
+            <div class="content"><h4>Personal Identification Code</h4></div>
+          </div>
+          <div class="link">
+            <div class="node-col"><div class="dot"></div><div class="stem"></div></div>
+            <div class="content"><h4>PKI Certificate Issuance</h4></div>
+          </div>
+          <div class="link final">
+            <div class="node-col"><div class="dot"></div></div>
+            <div class="content"><h4>eID Card / Mobile-ID / Smart-ID</h4></div>
+          </div>
+        </div>
+      </div>
+      <div class="col">
+        <h3 style="font-size:1.1rem;color:var(--dim);font-family:var(--sans);font-weight:600;margin-bottom:1rem;">Key principle</h3>
+        <div class="equation">
+          <div class="eq-term">Identifier</div>
+          <div class="eq-op">+</div>
+          <div class="eq-term">Digital Certificate</div>
+          <div class="eq-op">+</div>
+          <div class="eq-term">Government Trust Infrastructure</div>
+          <div class="eq-op">=</div>
+          <div class="eq-term result">Trusted eID</div>
+        </div>
+        <p class="lede" style="margin-top:2rem;">The Estonian model focuses on cryptographic trust rather than complex identifier generation — the ID number can stay simple because the certificate does the work.</p>
+      </div>
+    </div>
+    <footer class="tag">Personal Identification Code + PKI Certificate + Trust Infrastructure</footer>
+  </section>
+
+  <!-- SLIDE 3 — RECOMMENDED MODEL -->
+  <section class="slide" id="s3">
+    <div class="kicker-num">03 / 05</div>
+    <div class="eyebrow">Our Recommendation</div>
+    <h2>A four-step generation model</h2>
+    <p class="lede">Identity proofing first, a permanent internal reference second, a privacy-preserving public eID third, and a digital credential last.</p>
+
+    <div class="steps">
+      <div class="step">
+        <div class="num">01</div>
+        <div>
+          <h3>Identity Proofing</h3>
+          <div class="desc">Establish who the citizen is before any identifier is generated.</div>
+          <div class="tags"><span>Passport</span><span>Population Registry</span><span>Biometric Verification</span><span>Duplicate Detection</span></div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="num">02</div>
+        <div>
+          <h3>Generate Master Citizen Identifier</h3>
+          <div class="desc">MCID — the permanent internal citizen identifier, never exposed publicly.</div>
+          <div class="example">NL-MCID-7F3A91D84C22</div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="num">03</div>
+        <div>
+          <h3>Generate Public eID</h3>
+          <div class="desc">Country code, random component, and checksum — no personal data embedded.</div>
+          <div class="example">NL-8F4K9M2X7Q-7</div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="num">04</div>
+        <div>
+          <h3>Issue Digital Credential</h3>
+          <div class="desc">The eID becomes usable identity through cryptographic issuance.</div>
+          <div class="tags"><span>Verifiable Credential</span><span>Digital Certificate</span><span>Digital Wallet</span></div>
+        </div>
+      </div>
+    </div>
+    <footer class="tag">MCID stays internal — only the public eID and its credential are ever exposed</footer>
+  </section>
+
+  <!-- SLIDE 4 — PRINCIPLES -->
+  <section class="slide" id="s4">
+    <div class="kicker-num">04 / 05</div>
+    <div class="eyebrow">Design Principles</div>
+    <h2>What the recommended model guarantees</h2>
+    <div class="checklist">
+      <div class="item"><div class="mark">✓</div><span>Privacy by design</span></div>
+      <div class="item"><div class="mark">✓</div><span>No personal data embedded in identifier</span></div>
+      <div class="item"><div class="mark">✓</div><span>Random unique identifier</span></div>
+      <div class="item"><div class="mark">✓</div><span>Duplicate identity prevention</span></div>
+      <div class="item"><div class="mark">✓</div><span>eIDAS 2.0 compatible</span></div>
+      <div class="item"><div class="mark">✓</div><span>Digital wallet ready</span></div>
+      <div class="item"><div class="mark">✓</div><span>Cross-border interoperability</span></div>
+    </div>
+    <footer class="tag">Seven guarantees, one identity ecosystem</footer>
+  </section>
+
+  <!-- SLIDE 5 — CLOSING -->
+  <section class="slide" id="s5">
+    <div class="kicker-num">05 / 05</div>
+    <div class="eyebrow">Key Message</div>
+    <div class="closing">
+      <blockquote>An eID should not be treated as a number. The number is only a reference. Trust is established through identity proofing, cryptographic credentials, and a secure digital identity ecosystem.</blockquote>
+      <div class="seal">TRUSTED<br>eID<br>MODEL</div>
+    </div>
+    <footer class="tag">eID Generation Strategy — End</footer>
+  </section>
+
+</div>
+
+<script>
+  const slides = Array.from(document.querySelectorAll('section.slide'));
+  const navdots = document.getElementById('navdots');
+  slides.forEach((s,i)=>{
+    const b = document.createElement('button');
+    b.setAttribute('aria-label', 'Go to slide ' + (i+1));
+    b.addEventListener('click', ()=> s.scrollIntoView({behavior:'smooth'}));
+    navdots.appendChild(b);
+  });
+  const dots = Array.from(navdots.children);
+
+  function updateActive(){
+    const mid = window.scrollY + window.innerHeight/2;
+    let idx = 0;
+    slides.forEach((s,i)=>{ if(s.offsetTop <= mid) idx = i; });
+    dots.forEach((d,i)=> d.classList.toggle('active', i===idx));
+    const doc = document.documentElement;
+    const pct = (window.scrollY) / (doc.scrollHeight - window.innerHeight) * 100;
+    document.getElementById('progress').style.width = Math.min(100,Math.max(0,pct)) + '%';
+  }
+  document.addEventListener('scroll', updateActive);
+  window.addEventListener('resize', updateActive);
+  updateActive();
+
+  window.addEventListener('keydown', (e)=>{
+    const mid = window.scrollY + window.innerHeight/2;
+    let idx = 0;
+    slides.forEach((s,i)=>{ if(s.offsetTop <= mid) idx = i; });
+    if(e.key === 'ArrowDown' || e.key === 'PageDown'){
+      e.preventDefault();
+      if(slides[idx+1]) slides[idx+1].scrollIntoView({behavior:'smooth'});
+    } else if(e.key === 'ArrowUp' || e.key === 'PageUp'){
+      e.preventDefault();
+      if(slides[idx-1]) slides[idx-1].scrollIntoView({behavior:'smooth'});
+    }
+  });
+</script>
+</body>
+</html>
